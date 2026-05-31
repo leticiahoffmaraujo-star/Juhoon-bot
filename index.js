@@ -7,13 +7,15 @@ const {
 
 const app = express();
 
-// Keep alive pro Render
+// Keep alive Render
 app.get("/", (req, res) => {
   res.send("🤖 Bot Juhoon ativo!");
 });
 
-app.listen(process.env.PORT || 3000, () => {
-  console.log("🌐 Servidor rodando");
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log("🌐 Servidor rodando na porta", PORT);
 });
 
 async function startBot() {
@@ -22,13 +24,13 @@ async function startBot() {
   const sock = makeWASocket({
     auth: state,
     browser: ["Juhoon Bot", "Chrome", "1.0.0"],
-    printQRInTerminal: false
+    printQRInTerminal: true 
   });
 
-  // salva sessão
+  // salva login
   sock.ev.on("creds.update", saveCreds);
 
-  // conexão + QR (IMPORTANTE)
+  // conexão + QR
   sock.ev.on("connection.update", (update) => {
     const { connection, qr, lastDisconnect } = update;
 
@@ -44,7 +46,8 @@ async function startBot() {
     if (connection === "close") {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
 
-      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      const shouldReconnect =
+        statusCode !== DisconnectReason.loggedOut;
 
       console.log("❌ Conexão fechada. Reconnect:", shouldReconnect);
 
@@ -54,7 +57,7 @@ async function startBot() {
     }
   });
 
-  // comandos
+  // mensagens
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
