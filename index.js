@@ -13,30 +13,34 @@ app.get("/", (req, res) => {
   res.send("🤖 Bot Juhoon ativo!");
 });
 
-app.listen(process.env.PORT || 10000, () => {
-  console.log("🌐 Servidor rodando");
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+  console.log("🌐 Servidor rodando na porta", PORT);
 });
+
+let sock; // evita múltiplas instâncias
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
   const { version } = await fetchLatestBaileysVersion();
 
-  const sock = makeWASocket({
+  sock = makeWASocket({
     version,
     auth: state,
-    printQRInTerminal: true
+    printQRInTerminal: false,
+    browser: ["Juhoon Bot", "Chrome", "1.0.0"]
   });
 
-  // 💾 salvar login
+  // 💾 salvar credenciais
   sock.ev.on("creds.update", saveCreds);
 
-  // 📡 conexão + QR
+  // 📡 conexão
   sock.ev.on("connection.update", (update) => {
     const { connection, lastDisconnect, qr } = update;
 
     if (qr) {
-      console.log("\n📲 ESCANEIE O QR:");
+      console.log("\n📲 ESCANEIE O QR / LINK:");
       console.log(qr);
     }
 
@@ -45,18 +49,25 @@ async function startBot() {
     }
 
     if (connection === "close") {
-      const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const statusCode =
+        lastDisconnect?.error?.output?.statusCode;
 
       console.log("❌ Conexão caiu. Reiniciando...");
 
-      // 🔁 reconexão automática
-      if (statusCode !== DisconnectReason.loggedOut) {
-        startBot();
+      const shouldReconnect =
+        statusCode !== DisconnectReason.loggedOut;
+
+      if (shouldReconnect) {
+        setTimeout(() => {
+          startBot();
+        }, 5000); // 🔥 evita loop agressivo
+      } else {
+        console.log("🚫 Logout detectado. Precisa reconectar manualmente.");
       }
     }
   });
 
-  // 💬 comandos
+  // 💬 mensagens
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
@@ -65,7 +76,8 @@ async function startBot() {
 
     const body =
       msg.message.conversation ||
-      msg.message.extendedTextMessage?.text || "";
+      msg.message.extendedTextMessage?.text ||
+      "";
 
     if (body === "&menu") {
       await sock.sendMessage(from, {
