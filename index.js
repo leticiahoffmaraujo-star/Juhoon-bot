@@ -1,4 +1,16 @@
+const express = require("express");
 const { default: makeWASocket, useMultiFileAuthState } = require("@whiskeysockets/baileys");
+
+const app = express();
+
+// Servidor pra manter o Render vivo
+app.get("/", (req, res) => {
+  res.send("🤖 Bot Juhoon ativo!");
+});
+
+app.listen(3000, () => {
+  console.log("🌐 Servidor rodando na porta 3000");
+});
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
@@ -6,7 +18,9 @@ async function start() {
   const sock = makeWASocket({
     auth: state,
     printQRInTerminal: true,
-browser: ["Juhoon Bot", "Chrome", "1.0.0"]
+    browser: ["Juhoon Bot", "Chrome", "1.0.0"]
+  });
+
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("messages.upsert", async ({ messages }) => {
@@ -21,12 +35,18 @@ browser: ["Juhoon Bot", "Chrome", "1.0.0"]
 
     if (body === "&menu") {
       await sock.sendMessage(from, {
-        text: "📜 Menu do bot funcionando!"
+        text: "📜 Menu do Juhoon Bot funcionando!"
+      });
+    }
+
+    if (body === "&ping") {
+      await sock.sendMessage(from, {
+        text: "🏓 Pong!"
       });
     }
   });
 
-  console.log("Bot rodando...");
+  console.log("🤖 Bot iniciado...");
 }
 
 start();
