@@ -10,7 +10,7 @@ const app = express();
 
 // 🌐 manter Render vivo
 app.get("/", (req, res) => {
-  res.send("🤖 Bot Juhoon ativo!");
+  res.send("🤖 Juhoon ativo!");
 });
 
 const PORT = process.env.PORT || 10000;
@@ -29,7 +29,7 @@ async function startBot() {
     version,
     auth: state,
     printQRInTerminal: false,
-    browser: ["Juhoon Bot", "Chrome", "1.0.0"]
+    browser: ["Juhoon", "Chrome", "1.0.0"]
   });
 
   // 💾 salvar credenciais
@@ -81,7 +81,7 @@ async function startBot() {
 
     if (body === "&menu") {
       await sock.sendMessage(from, {
-        text: "📜 Menu do Juhoon Bot funcionando!"
+        text: "📜 Menu do Juhoon funcionando!"
       });
     }
 
