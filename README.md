@@ -1,2 +1,2 @@
-# Juhoon-bot
+# Juhoon
 Bot WhatsApp com comandos
