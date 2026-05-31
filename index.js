@@ -3,10 +3,15 @@ const {
   default: makeWASocket,
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
-  DisconnectReason
+  DisconnectReason,
+  Browsers
 } = require("@whiskeysockets/baileys");
+const pino = require("pino");
 
 const app = express();
+
+// Logger
+const logger = pino();
 
 // 🌐 manter Render vivo
 app.get("/", (req, res) => {
@@ -21,78 +26,101 @@ app.listen(PORT, () => {
 let sock; // evita múltiplas instâncias
 
 async function startBot() {
-  const { state, saveCreds } = await useMultiFileAuthState("./auth");
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
-  const { version } = await fetchLatestBaileysVersion();
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`usando versão do baileys ${version.join(".")}, isLatest: ${isLatest}`);
 
-  sock = makeWASocket({
-    version,
-    auth: state,
-    printQRInTerminal: false,
-    browser: ["Juhoon", "Chrome", "1.0.0"]
-  });
+    sock = makeWASocket({
+      version,
+      auth: state,
+      printQRInTerminal: true, // ✅ ATIVAR QR NO TERMINAL
+      logger,
+      browser: Browsers.ubuntu("Chrome")
+    });
 
-  // 💾 salvar credenciais
-  sock.ev.on("creds.update", saveCreds);
+    // 💾 salvar credenciais
+    sock.ev.on("creds.update", saveCreds);
 
-  // 📡 conexão
-  sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect, qr } = update;
+    // 📡 conexão
+    sock.ev.on("connection.update", (update) => {
+      const { connection, lastDisconnect, qr, isNewLogin } = update;
 
-    if (qr) {
-      console.log("\n📲 ESCANEIE O QR / LINK:");
-      console.log(qr);
-    }
-
-    if (connection === "open") {
-      console.log("✅ CONECTADO NO WHATSAPP!");
-    }
-
-    if (connection === "close") {
-      const statusCode =
-        lastDisconnect?.error?.output?.statusCode;
-
-      console.log("❌ Conexão caiu. Reiniciando...");
-
-      const shouldReconnect =
-        statusCode !== DisconnectReason.loggedOut;
-
-      if (shouldReconnect) {
-        setTimeout(() => {
-          startBot();
-        }, 5000); // 🔥 evita loop agressivo
-      } else {
-        console.log("🚫 Logout detectado. Precisa reconectar manualmente.");
+      if (qr) {
+        console.log("\n📲 ESCANEIE O QR CODE:\n", qr, "\n");
       }
-    }
-  });
 
-  // 💬 mensagens
-  sock.ev.on("messages.upsert", async ({ messages }) => {
-    const msg = messages[0];
-    if (!msg.message) return;
+      if (connection === "open") {
+        console.log("✅ CONECTADO NO WHATSAPP!");
+      }
 
-    const from = msg.key.remoteJid;
+      if (connection === "connecting") {
+        console.log("🔄 Conectando...");
+      }
 
-    const body =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      "";
+      if (connection === "close") {
+        const shouldReconnect =
+          (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
 
-    if (body === "&menu") {
-      await sock.sendMessage(from, {
-        text: "📜 Menu do Juhoon funcionando!"
-      });
-    }
+        console.log("❌ Conexão caiu.", shouldReconnect ? "Reiniciando..." : "");
 
-    if (body === "&ping") {
-      await sock.sendMessage(from, {
-        text: "🏓 Pong!"
-      });
-    }
-  });
+        if (shouldReconnect) {
+          setTimeout(() => {
+            startBot();
+          }, 3000);
+        } else {
+          console.log("🚫 Logout detectado. Precisa reconectar manualmente.");
+        }
+      }
+    });
 
-  console.log("🤖 Bot iniciado...");
+    // 🔌 Socket errors
+    sock.ev.on("socket.connecting", () => {
+      console.log("🔌 Socket conectando...");
+    });
+
+    sock.ev.on("socket.open", () => {
+      console.log("🔌 Socket aberto");
+    });
+
+    sock.ev.on("socket.close", () => {
+      console.log("🔌 Socket fechado");
+    });
+
+    // 💬 mensagens
+    sock.ev.on("messages.upsert", async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message) return;
+
+      const from = msg.key.remoteJid;
+      const body =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text ||
+        "";
+
+      console.log(`📨 Mensagem recebida: "${body}" de ${from}`);
+
+      if (body === "&menu") {
+        await sock.sendMessage(from, {
+          text: "📜 Menu do Juhoon funcionando!"
+        });
+      }
+
+      if (body === "&ping") {
+        await sock.sendMessage(from, {
+          text: "🏓 Pong!"
+        });
+      }
+    });
+
+    console.log("🤖 Bot iniciado...");
+  } catch (error) {
+    console.error("❌ Erro ao iniciar bot:", error);
+    setTimeout(() => {
+      startBot();
+    }, 5000);
+  }
 }
 
 startBot();
