@@ -7,46 +7,54 @@ const {
 
 const app = express();
 
-// Mantém o Render vivo
+// Keep alive pro Render
 app.get("/", (req, res) => {
   res.send("🤖 Bot Juhoon ativo!");
 });
 
-app.listen(3000, () => {
-  console.log("🌐 Servidor rodando na porta 3000");
+app.listen(process.env.PORT || 3000, () => {
+  console.log("🌐 Servidor rodando");
 });
 
-async function start() {
+async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false,
-    browser: ["Juhoon Bot", "Chrome", "1.0.0"]
+    browser: ["Juhoon Bot", "Chrome", "1.0.0"],
+    printQRInTerminal: false
   });
 
+  // salva sessão
   sock.ev.on("creds.update", saveCreds);
 
-  // Conexão e QR
+  // conexão + QR (IMPORTANTE)
   sock.ev.on("connection.update", (update) => {
-    const { connection, qr } = update;
+    const { connection, qr, lastDisconnect } = update;
 
     if (qr) {
-      console.log("📲 QR CODE:");
+      console.log("\n📲 ESCANEIE ESSE QR NO WHATSAPP:\n");
       console.log(qr);
     }
 
     if (connection === "open") {
-      console.log("✅ WhatsApp conectado!");
+      console.log("✅ WhatsApp conectado com sucesso!");
     }
 
     if (connection === "close") {
-      console.log("❌ Conexão fechada, tentando reconectar...");
-      start();
+      const statusCode = lastDisconnect?.error?.output?.statusCode;
+
+      const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+
+      console.log("❌ Conexão fechada. Reconnect:", shouldReconnect);
+
+      if (shouldReconnect) {
+        startBot();
+      }
     }
   });
 
-  // Mensagens
+  // comandos
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
@@ -55,7 +63,8 @@ async function start() {
 
     const body =
       msg.message.conversation ||
-      msg.message.extendedTextMessage?.text || "";
+      msg.message.extendedTextMessage?.text ||
+      "";
 
     if (body === "&menu") {
       await sock.sendMessage(from, {
@@ -73,4 +82,4 @@ async function start() {
   console.log("🤖 Bot iniciado...");
 }
 
-start();
+startBot();
