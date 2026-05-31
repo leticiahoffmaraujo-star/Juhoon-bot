@@ -1,7 +1,8 @@
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
 const QRCode = require("qrcode");
+const pino = require("pino");
+
 const {
   default: makeWASocket,
   useMultiFileAuthState,
@@ -9,204 +10,121 @@ const {
   DisconnectReason,
   Browsers
 } = require("@whiskeysockets/baileys");
-const pino = require("pino");
 
 const app = express();
 
-// Logger
-const logger = pino({
-  level: process.env.LOG_LEVEL || "info"
-});
-
-console.log("🚀 Iniciando Juhoon Bot...");
+const logger = pino({ level: "info" });
 
 let sock;
 let qrCode = null;
 
-// 🌐 Health check
+// 🌐 STATUS
 app.get("/", (req, res) => {
-  res.json({ 
-    status: "✅ Bot Juhoon ativo!", 
-    timestamp: new Date().toISOString(),
-    connected: sock?.user ? "✅ Conectado" : "❌ Desconectado"
+  res.json({
+    status: "Juhoon Bot rodando",
+    connected: !!sock?.user
   });
 });
 
-// 📱 QR Code endpoint
+// 📲 QR CODE PAGE
 app.get("/qr", (req, res) => {
-  if (!qrCode) {
-    return res.json({ status: "Aguardando QR code..." });
-  }
-  res.type("html").send(`
-    <!DOCTYPE html>
+  if (!qrCode) return res.send("⏳ Aguardando QR Code...");
+
+  res.send(`
     <html>
-    <head>
-      <title>Juhoon Bot - QR Code</title>
-      <style>
-        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f0f0f0; font-family: Arial; }
-        .container { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #25d366; margin: 0 0 20px 0; }
-        img { width: 300px; height: 300px; }
-        p { color: #666; margin-top: 20px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <h1>📲 Escaneie com WhatsApp</h1>
-        <img src="data:image/png;base64,${qrCode}" alt="QR Code">
-        <p>Aponte a câmera do seu celular com WhatsApp aberto</p>
-      </div>
-    </body>
+      <body style="display:flex;justify-content:center;align-items:center;height:100vh;background:#111;">
+        <div style="text-align:center;color:white">
+          <h2>📲 Escaneie o QR</h2>
+          <img width="300" src="${qrCode}" />
+        </div>
+      </body>
     </html>
   `);
 });
 
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log(`🌐 Servidor rodando na porta ${PORT}`);
-  console.log(`📱 QR Code disponível em: http://localhost:${PORT}/qr`);
-});
-
+// 🚀 BOT
 async function startBot() {
-  try {
-    console.log("\n⏳ Iniciando conexão WhatsApp...");
+  const { state, saveCreds } = await useMultiFileAuthState("./auth");
 
-    // Criar pasta auth se não existir
-    const authPath = path.resolve("./auth");
-    if (!fs.existsSync(authPath)) {
-      fs.mkdirSync(authPath, { recursive: true });
-      console.log("📁 Pasta ./auth criada");
+  const { version } = await fetchLatestBaileysVersion();
+
+  sock = makeWASocket({
+    version,
+    auth: state,
+    logger,
+    printQRInTerminal: true,
+    browser: Browsers.ubuntu("Chrome")
+  });
+
+  sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("connection.update", async (update) => {
+    const { connection, qr, lastDisconnect } = update;
+
+    // 📲 GERAR QR
+    if (qr) {
+      qrCode = await QRCode.toDataURL(qr);
+      console.log("📲 QR gerado");
     }
 
-    // Obter credenciais
-    const { state, saveCreds } = await useMultiFileAuthState("./auth");
-    console.log("✅ Estado de autenticação carregado");
-
-    // Obter versão
-    let version;
-    try {
-      const versionData = await fetchLatestBaileysVersion();
-      version = versionData.version;
-      console.log(`✅ Versão Baileys: ${version.join(".")}`);
-    } catch (versionError) {
-      console.error("⚠️ Erro ao buscar versão, usando fallback");
-      version = [6, 143, 155];
+    // ✅ CONECTADO
+    if (connection === "open") {
+      console.log("✅ CONECTADO NO WHATSAPP!");
+      qrCode = null;
     }
 
-    // Criar socket
-    console.log("🔌 Criando conexão...");
-    sock = makeWASocket({
-      version,
-      auth: state,
-      printQRInTerminal: false, // ❌ Desativado
-      logger: logger,
-      browser: Browsers.ubuntu("Chrome"),
-      syncFullHistory: false,
-      markOnlineOnConnect: true
-    });
+    // ❌ DESCONECTOU
+    if (connection === "close") {
+      const code = lastDisconnect?.error?.output?.statusCode;
 
-    // 💾 Salvar credenciais
-    sock.ev.on("creds.update", saveCreds);
-
-    // 📡 Eventos de conexão
-    sock.ev.on("connection.update", async (update) => {
-      const { connection, lastDisconnect, qr } = update;
-
-      // QR CODE - Gerar imagem
-      if (qr) {
-        try {
-          qrCode = await QRCode.toDataURL(qr, {
-            errorCorrectionLevel: "H",
-            type: "image/png",
-            width: 300,
-            margin: 1,
-            color: {
-              dark: "#000000",
-              light: "#FFFFFF"
-            }
-          });
-          console.log("\n📲 QR CODE GERADO!");
-          console.log(`🔗 Acesse: http://localhost:${PORT}/qr`);
-          console.log("✅ Escaneie o código com seu WhatsApp\n");
-        } catch (err) {
-          console.error("❌ Erro ao gerar QR code:", err.message);
-        }
+      if (code !== DisconnectReason.loggedOut) {
+        console.log("🔄 Reconectando...");
+        setTimeout(startBot, 3000);
+      } else {
+        console.log("🚫 Logout detectado. Limpando auth...");
+        fs.rmSync("./auth", { recursive: true, force: true });
+        setTimeout(startBot, 3000);
       }
+    }
+  });
 
-      if (connection === "connecting") {
-        console.log("🔄 Conectando...");
-      }
+  // 💬 MENSAGENS
+  sock.ev.on("messages.upsert", async ({ messages }) => {
+    const msg = messages[0];
+    if (!msg.message) return;
 
-      if (connection === "open") {
-        console.log("\n✅ ✅ ✅ CONECTADO COM SUCESSO! ✅ ✅ ✅");
-        console.log(`👤 Usuário: ${sock.user.name}`);
-        console.log(`📱 Número: ${sock.user.id}\n`);
-        qrCode = null; // Limpar QR code
-      }
+    const from = msg.key.remoteJid;
 
-      if (connection === "close") {
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        console.log(`\n❌ Desconectado (Código: ${statusCode})`);
+    const body =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      "";
 
-        if (statusCode === DisconnectReason.loggedOut) {
-          console.log("🚫 Logout detectado. Apague a pasta ./auth para reconectar.\n");
-          fs.rmSync("./auth", { recursive: true, force: true });
-          setTimeout(() => startBot(), 3000);
-        } else {
-          console.log("🔄 Reconectando em 3 segundos...\n");
-          setTimeout(() => startBot(), 3000);
-        }
-      }
-    });
+    // 📜 MENU
+    if (body === "&menu") {
+      return sock.sendMessage(from, {
+        text: "📜 Menu Juhoon Bot\n\n&ping - testar bot\n&menu - ver menu"
+      });
+    }
 
-    // 💬 Mensagens
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-      const msg = messages[0];
-      if (!msg.message) return;
+    // 🏓 PING
+    if (body === "&ping") {
+      return sock.sendMessage(from, {
+        text: "🏓 Pong! Bot conectado com sucesso ⚡"
+      });
+    }
+  });
 
-      const from = msg.key.remoteJid;
-      const isGroup = msg.key.remoteJid.endsWith("@g.us");
-
-      const body =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text ||
-        "";
-
-      if (!body) return;
-
-      console.log(`📨 [${isGroup ? "GRUPO" : "PRIVADO"}] ${from}: "${body}"`);
-
-      // Comandos
-      if (body === "&menu") {
-        await sock.sendMessage(from, {
-          text: "📜 **Menu do Juhoon Bot**\n\n&ping - Testa a conexão\n&menu - Mostra este menu"
-        });
-      }
-
-      if (body === "&ping") {
-        await sock.sendMessage(from, {
-          text: "🏓 Pong! Bot funcionando perfeitamente!"
-        });
-      }
-    });
-
-    console.log("🤖 Bot pronto! Aguardando QR code...\n");
-
-  } catch (error) {
-    console.error("❌ Erro ao iniciar bot:", error.message);
-    console.log("🔄 Tentando novamente em 5 segundos...\n");
-    setTimeout(() => startBot(), 5000);
-  }
+  console.log("🤖 Bot iniciando...");
 }
 
-// Iniciar bot
+// 🌐 SERVER
+const PORT = process.env.PORT || 10000;
+
+app.listen(PORT, () => {
+  console.log("🌐 Servidor rodando na porta", PORT);
+  console.log(`📲 QR: https://juhoon-bot.onrender.com/qr`);
+});
+
+// 🚀 START
 startBot();
-
-// Tratamento de erros
-process.on("uncaughtException", (error) => {
-  console.error("❌ Erro não capturado:", error.message);
-});
-
-process.on("unhandledRejection", (error) => {
-  console.error("❌ Promise rejeitada:", error.message);
-});
