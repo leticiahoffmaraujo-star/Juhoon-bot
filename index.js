@@ -7,7 +7,6 @@ const {
 
 const app = express();
 
-// Keep alive Render
 app.get("/", (req, res) => {
   res.send("🤖 Bot Juhoon ativo!");
 });
@@ -24,19 +23,21 @@ async function startBot() {
   const sock = makeWASocket({
     auth: state,
     browser: ["Juhoon Bot", "Chrome", "1.0.0"],
-    printQRInTerminal: true 
+    printQRInTerminal: false
   });
 
-  // salva login
   sock.ev.on("creds.update", saveCreds);
 
-  // conexão + QR
   sock.ev.on("connection.update", (update) => {
     const { connection, qr, lastDisconnect } = update;
 
+    // 👉 QR CLÁSSICO (aparece como texto grande no log)
     if (qr) {
-      console.log("\n📲 ESCANEIE ESSE QR NO WHATSAPP:\n");
+      console.log("\n====================");
+      console.log("📲 QR CODE CLÁSSICO:");
+      console.log("====================\n");
       console.log(qr);
+      console.log("\n👉 Abra o WhatsApp > Aparelhos conectados > Conectar dispositivo\n");
     }
 
     if (connection === "open") {
@@ -57,7 +58,6 @@ async function startBot() {
     }
   });
 
-  // mensagens
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message) return;
