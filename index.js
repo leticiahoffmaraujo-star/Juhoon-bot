@@ -5,7 +5,9 @@ const P = require('pino')
 const app = express()
 const port = process.env.PORT || 10000
 
-// 🌐 servidor fica fora do bot
+let isRestarting = false
+
+// 🌐 servidor web
 app.get('/', (req, res) => {
   res.send('Bot online 🤖')
 })
@@ -31,26 +33,30 @@ async function startBot() {
 
     if (connection === 'open') {
       console.log('✅ CONECTADO')
+      isRestarting = false
     }
 
     if (connection === 'close') {
 
-  if (isRestarting) return
-  isRestarting = true
+      if (isRestarting) return
+      isRestarting = true
 
-  console.log('⚠️ conexão caiu')
+      console.log('⚠️ conexão caiu')
 
-  setTimeout(() => {
-    isRestarting = false
-    startBot()
-  }, 8000)
+      setTimeout(() => {
+        startBot()
+      }, 8000)
     }
+  })
 
+  // 💬 mensagens (FORA do connection.update)
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0]
     if (!msg.message) return
 
-    const texto = msg.message.conversation || msg.message.extendedTextMessage?.text
+    const texto =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text
 
     if (texto === '&ping') {
       await sock.sendMessage(msg.key.remoteJid, { text: 'pong 🏓' })
