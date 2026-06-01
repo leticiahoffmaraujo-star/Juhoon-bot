@@ -130,8 +130,8 @@ async function start() {
       }
 
       else if (comando === '!menu') {
-        const menu = `🤖 *JUHOON BOT MENU*\n\n` +
-                     `📌 *Comandos Gerais:*\n` +
+        const menu = `🤖 *ꩇׁׅ֪݊ꫀׁׅܻ݊݊ꪀυׁׅ hׁׅ֮ᨵׁׅׅᨵׁׅׅ݊ꪀ-֮ϐׁᨵׁׅׅtׁׅ*\n\n` +
+                     `📌 *𝙲𝙾𝙼𝙰𝙽𝙳𝙾𝚂 𝙶𝙴𝚁𝙰𝙸𝚂::*\n` +
                      `• !sticker ou !s\n` +
                      `• !menu\n` +
                      `• !ping\n\n` +
@@ -139,7 +139,8 @@ async function start() {
                      `• !promover @user\n` +
                      `• !rebaixar @user\n` +
                      `• !remover @user\n` +
-                     `• !marcar ou !totag\n` +
+                     `• !𝚖𝚊𝚛𝚌𝚊r/n`+
+                     `• !totag\n` +
                      `• !fechargp\n` +
                      `• !abrirgp\n` +
                      `• !soadm\n`
@@ -147,7 +148,7 @@ async function start() {
       }
 
       else if (comando === '!ping') {
-        await sock.sendMessage(from, { text: '🏓 Pong! Bot online!' })
+        await sock.sendMessage(from, { text: '🏓 Pong! hׁׅ֮ᨵׁׅׅ݊ꪀ ᨵׁׅׅ݊ꪀ!' })
       }
 
     } catch (err) {
