@@ -5,6 +5,7 @@ const P = require('pino')
 const app = express()
 const port = process.env.PORT || 10000
 
+// 🌐 servidor web (Render precisa disso)
 app.get('/', (req, res) => {
   res.send('Bot online 🤖')
 })
@@ -34,7 +35,7 @@ async function startBot() {
       const { connection, lastDisconnect } = update
 
       if (connection === 'open') {
-        console.log('✅ CONECTADO')
+        console.log('✅ CONECTADO AO WHATSAPP')
         retryCount = 0
         isRestarting = false
       }
@@ -49,31 +50,30 @@ async function startBot() {
 
         console.log('⚠️ conexão caiu')
 
-        // se foi logout real, para tudo
+        // 🚨 logout real (precisa novo QR)
         if (loggedOut) {
-          console.log('❌ sessão perdida — precisa novo QR')
+          console.log('❌ sessão expirada — precisa novo QR')
           return
         }
 
         retryCount++
 
+        // 🛑 trava anti-loop infinito
         if (retryCount > MAX_RETRIES) {
-          console.log('🛑 muitas tentativas. bot pausado para evitar loop.')
+          console.log('🛑 muitas tentativas. bot pausado.')
           return
         }
 
-        // 🌿 delay progressivo (mais humano)
-        const delay = Math.min(60000, 4000 * retryCount)
+        // 🌿 reconexão progressiva (leve e segura)
+        const delay = Math.min(60000, 5000 * retryCount)
 
-        retryCount++
+        console.log(`🔄 reconectando em ${delay / 1000}s`)
 
-const delay = Math.min(120000, 10000 * retryCount)
-
-console.log(`⏳ aguardando ${delay / 1000}s antes de tentar de novo...`)
-
-setTimeout(() => {
-  startBot()
-}, delay)
+        setTimeout(() => {
+          startBot()
+        }, delay)
+      }
+    })
 
     sock.ev.on('messages.upsert', async (m) => {
       const msg = m.messages[0]
