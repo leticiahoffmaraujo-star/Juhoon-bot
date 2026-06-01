@@ -65,13 +65,15 @@ async function startBot() {
         // 🌿 delay progressivo (mais humano)
         const delay = Math.min(60000, 4000 * retryCount)
 
-        console.log(`🔄 tentando reconectar em ${delay / 1000}s`)
+        retryCount++
 
-        setTimeout(() => {
-          startBot()
-        }, delay)
-      }
-    })
+const delay = Math.min(120000, 10000 * retryCount)
+
+console.log(`⏳ aguardando ${delay / 1000}s antes de tentar de novo...`)
+
+setTimeout(() => {
+  startBot()
+}, delay)
 
     sock.ev.on('messages.upsert', async (m) => {
       const msg = m.messages[0]
