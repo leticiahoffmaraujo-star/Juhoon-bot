@@ -42,7 +42,18 @@ async function startBot() {
       }, 5000)
     }
   })
+const express = require('express')
+const app = express()
+const port = process.env.PORT || 4000
 
+app.get('/', (req, res) => {
+  res.send('Hello World!')
+})
+
+app.listen(port, () => {
+  console.log(`Example app listening on port ${port}`)
+})
+  
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0]
     if (!msg.message) return
