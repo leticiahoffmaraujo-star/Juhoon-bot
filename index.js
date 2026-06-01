@@ -1,5 +1,4 @@
-
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/b>
+const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys')
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('sessao')
@@ -20,7 +19,7 @@ async function start() {
       console.log('✅ CONECTADO!')
     }
 
-    // só tenta pairing quando estiver realmente aberto
+    // pairing code (só se não estiver registrado)
     if (connection === 'open' && !state.creds.registered) {
       const numero = '554797918312'
 
@@ -32,6 +31,8 @@ async function start() {
       }
     }
   })
+
+  sock.ev.on('creds.update', saveCreds)
 }
 
 start()
