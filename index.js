@@ -1,7 +1,9 @@
+const { useMultiFileAuthState, makeWASocket } = require('@whiskeysockets/baileys')
 const express = require("express");
 const fs = require("fs");
 const QRCode = require("qrcode");
 const pino = require("pino");
+const { state, saveCreds } = await useMultiFileAuthState('./auth')
 
 const {
   default: makeWASocket,
@@ -14,7 +16,10 @@ const {
 const app = express();
 
 const logger = pino({ level: "info" });
-
+const sock = makeWASocket({
+  auth: state,
+  printQRInTerminal: true
+})
 let sock;
 let qrCode = null;
 
