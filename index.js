@@ -1,102 +1,37 @@
-const express = require('express')
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
-const P = require('pino')
 
-const app = express()
-const port = process.env.PORT || 10000
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/b>
 
-// 🌐 servidor web (Render precisa disso)
-app.get('/', (req, res) => {
-  res.send('Bot online 🤖')
-})
+async function start() {
+  const { state, saveCreds } = await useMultiFileAuthState('sessao')
 
-app.listen(port, () => {
-  console.log(`🌐 servidor rodando na porta ${port}`)
-})
+  const sock = makeWASocket({
+    auth: state,
+    printQRInTerminal: false
+  })
 
-// 🧠 controle de estabilidade
-let retryCount = 0
-const MAX_RETRIES = 8
-let isRestarting = false
+  sock.ev.on('creds.update', saveCreds)
 
-async function startBot() {
-  try {
+  sock.ev.on('connection.update', async (update) => {
+    const { connection } = update
 
-    const { state, saveCreds } = await useMultiFileAuthState('./auth')
+    console.log('STATUS:', connection)
 
-    const sock = makeWASocket({
-      auth: state,
-      logger: P({ level: 'silent' })
-    })
+    if (connection === 'open') {
+      console.log('✅ CONECTADO!')
+    }
 
-    sock.ev.on('creds.update', saveCreds)
+    // só tenta pairing quando estiver realmente aberto
+    if (connection === 'open' && !state.creds.registered) {
+      const numero = '554797918312'
 
-    sock.ev.on('connection.update', (update) => {
-      const { connection, lastDisconnect } = update
-
-      if (connection === 'open') {
-        console.log('✅ CONECTADO AO WHATSAPP')
-        retryCount = 0
-        isRestarting = false
+      try {
+        const code = await sock.requestPairingCode(numero)
+        console.log('\n🔑 CÓDIGO:\n', code)
+      } catch (e) {
+        console.log('Erro pairing:', e.message)
       }
-
-      if (connection === 'close') {
-
-        if (isRestarting) return
-        isRestarting = true
-
-        const statusCode = lastDisconnect?.error?.output?.statusCode
-        const loggedOut = statusCode === DisconnectReason.loggedOut
-
-        console.log('⚠️ conexão caiu')
-
-        // 🚨 logout real (precisa novo QR)
-        if (loggedOut) {
-          console.log('❌ sessão expirada — precisa novo QR')
-          return
-        }
-
-        retryCount++
-
-        // 🛑 trava anti-loop infinito
-        if (retryCount > MAX_RETRIES) {
-          console.log('🛑 muitas tentativas. bot pausado.')
-          return
-        }
-
-        // 🌿 reconexão progressiva (leve e segura)
-        const delay = Math.min(60000, 5000 * retryCount)
-
-        console.log(`🔄 reconectando em ${delay / 1000}s`)
-
-        setTimeout(() => {
-          startBot()
-        }, delay)
-      }
-    })
-
-    sock.ev.on('messages.upsert', async (m) => {
-      const msg = m.messages[0]
-      if (!msg.message) return
-
-      const texto =
-        msg.message.conversation ||
-        msg.message.extendedTextMessage?.text
-
-      if (texto === '&ping') {
-        await sock.sendMessage(msg.key.remoteJid, {
-          text: 'pong 🏓'
-        })
-      }
-    })
-
-  } catch (err) {
-    console.log('💥 erro fatal:', err)
-
-    setTimeout(() => {
-      startBot()
-    }, 10000)
-  }
+    }
+  })
 }
 
-startBot()
+start()
