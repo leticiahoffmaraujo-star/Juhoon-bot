@@ -6,15 +6,35 @@ const pino = require('pino')
 const app = express()
 const PORT = process.env.PORT || 10000
 
+let qrCodeData = null // Para guardar o QR temporariamente
+
 app.get('/', (req, res) => {
   res.send('Juhoon online 🤖 <br><br><a href="/qr">📱 Ver QR Code</a>')
+})
+
+// Rota do QR Code
+app.get('/qr', async (req, res) => {
+  if (!qrCodeData) {
+    return res.send('Nenhum QR Code disponível no momento.<br>Aguarde alguns segundos ou reinicie o serviço.')
+  }
+
+  try {
+    const qrImage = await QRCode.toBuffer(qrCodeData, {
+      width: 400,
+      margin: 2,
+      color: { dark: '#000000', light: '#ffffff' }
+    })
+
+    res.setHeader('Content-Type', 'image/png')
+    res.send(qrImage)
+  } catch (err) {
+    res.status(500).send('Erro ao gerar QR Code')
+  }
 })
 
 app.listen(PORT, () => {
   console.log(`🚀 Servidor rodando na porta ${PORT}`)
 })
-
-let qrCodeData = null // Guardar o QR atual
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('./sessao')
@@ -46,7 +66,7 @@ async function start() {
 
     if (connection === 'close') {
       const reason = lastDisconnect?.error?.output?.statusCode
-      console.log(`❌ Conexão fechada (código: ${reason})`)
+      console.log(`❌ Conexão fechada (código: ${reason || 'desconhecido'})`)
 
       if (reason !== DisconnectReason.loggedOut) {
         console.log('🔄 Reconectando em 5 segundos...')
@@ -55,18 +75,13 @@ async function start() {
     }
   })
 
-  // Rota para ver o QR Code como imagem
-  app.get('/qr', async (req, res) => {
-    if (!qrCodeData) {
-      return res.send('Nenhum QR Code disponível no momento. Aguarde ou reinicie o bot.')
+  // Listener de mensagens
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+    const m = messages[0]
+    if (m.message?.conversation) {
+      console.log(`📩 Mensagem de ${m.key.remoteJid}: ${m.message.conversation}`)
     }
+  })
+}
 
-    try {
-      const qrImage = await QRCode.toBuffer(qrCodeData, {
-        width: 400,
-        margin: 2,
-        color: { dark: '#000000', light: '#ffffff' }
-      })
-
-      res.setHeader('Content-Type', 'image/png')
-      res.send(qrImage)
+start()
