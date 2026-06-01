@@ -13,7 +13,7 @@ app.listen(PORT, () => {
 })
 
 async function start() {
-  const { state, saveCreds } = await useMultiFileAuthState('sessao')
+  const { state, saveCreds } = await useMultiFileAuthState('./sessao')
 
   const sock = makeWASocket({
     auth: state
@@ -21,14 +21,19 @@ async function start() {
 
   sock.ev.on('creds.update', saveCreds)
 
-  sock.ev.on('connection.update', async (update) => {
+  sock.ev.on('connection.update', (update) => {
     const { connection } = update
 
     console.log('STATUS:', connection)
 
     if (connection === 'open') {
-      console.log('✅ CONECTADO!')
+      console.log('✅ CONECTADO AO WHATSAPP')
     }
 
+    if (connection === 'close') {
+      console.log('❌ CONEXÃO FECHADA')
+    }
+  })
+}
 
 start()
