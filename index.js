@@ -34,19 +34,17 @@ async function startBot() {
     }
 
     if (connection === 'close') {
-      const statusCode = lastDisconnect?.error?.output?.statusCode
-      const loggedOut = statusCode === DisconnectReason.loggedOut
 
-      console.log('⚠️ conexão caiu')
+  if (isRestarting) return
+  isRestarting = true
 
-      if (loggedOut) return
+  console.log('⚠️ conexão caiu')
 
-      // 🔥 só reconecta o WHATSAPP, não o servidor
-      setTimeout(() => {
-        startBot()
-      }, 5000)
+  setTimeout(() => {
+    isRestarting = false
+    startBot()
+  }, 8000)
     }
-  })
 
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0]
