@@ -30,19 +30,5 @@ async function start() {
       console.log('✅ CONECTADO!')
     }
 
-    if (!state.creds.registered) {
-      try {
-        const numero = '554797918312' // coloque o número completo com DDI e DDD
-
-        const code = await sock.requestPairingCode(numero)
-
-        console.log('\n🔑 CÓDIGO DE PAREAMENTO:\n')
-        console.log(code)
-      } catch (err) {
-        console.log('Erro ao gerar código:', err.message)
-      }
-    }
-  })
-}
 
 start()
