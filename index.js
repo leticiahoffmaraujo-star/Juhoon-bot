@@ -5,83 +5,96 @@ const P = require('pino')
 const app = express()
 const port = process.env.PORT || 10000
 
-let isRestarting = false
-
-// 🌐 servidor web
 app.get('/', (req, res) => {
   res.send('Bot online 🤖')
 })
 
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`)
+  console.log(`🌐 servidor rodando na porta ${port}`)
 })
 
+// 🧠 controle de estabilidade
+let retryCount = 0
+const MAX_RETRIES = 8
+let isRestarting = false
+
 async function startBot() {
+  try {
 
-  const { state, saveCreds } = await useMultiFileAuthState('./auth')
+    const { state, saveCreds } = await useMultiFileAuthState('./auth')
 
-  const sock = makeWASocket({
-    auth: state,
-    logger: P({ level: 'silent' }),
-    printQRInTerminal: false
-  })
+    const sock = makeWASocket({
+      auth: state,
+      logger: P({ level: 'silent' })
+    })
 
-  sock.ev.on('creds.update', saveCreds)
+    sock.ev.on('creds.update', saveCreds)
 
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect } = update
 
-    if (connection === 'open') {
-      console.log('✅ CONECTADO')
-      isRestarting = false
-    }
+      if (connection === 'open') {
+        console.log('✅ CONECTADO')
+        retryCount = 0
+        isRestarting = false
+      }
 
-    let retryCount = 0
-const MAX_RETRIES = 10
+      if (connection === 'close') {
 
-sock.ev.on('connection.update', (update) => {
-  const { connection } = update
+        if (isRestarting) return
+        isRestarting = true
 
-  if (connection === 'open') {
-    console.log('✅ CONECTADO')
-    retryCount = 0
-  }
+        const statusCode = lastDisconnect?.error?.output?.statusCode
+        const loggedOut = statusCode === DisconnectReason.loggedOut
 
-  if (connection === 'close') {
+        console.log('⚠️ conexão caiu')
 
-    retryCount++
+        // se foi logout real, para tudo
+        if (loggedOut) {
+          console.log('❌ sessão perdida — precisa novo QR')
+          return
+        }
 
-    console.log(`⚠️ conexão caiu (tentativa ${retryCount})`)
+        retryCount++
 
-    // 🛑 para antes de virar loop infinito
-    if (retryCount > MAX_RETRIES) {
-      console.log('❌ muitas tentativas. parada segura ativada.')
-      return
-    }
+        if (retryCount > MAX_RETRIES) {
+          console.log('🛑 muitas tentativas. bot pausado para evitar loop.')
+          return
+        }
 
-    const delay = Math.min(60000, 5000 * retryCount)
+        // 🌿 delay progressivo (mais humano)
+        const delay = Math.min(60000, 4000 * retryCount)
 
-    console.log(`🔄 tentando novamente em ${delay / 1000}s`)
+        console.log(`🔄 tentando reconectar em ${delay / 1000}s`)
+
+        setTimeout(() => {
+          startBot()
+        }, delay)
+      }
+    })
+
+    sock.ev.on('messages.upsert', async (m) => {
+      const msg = m.messages[0]
+      if (!msg.message) return
+
+      const texto =
+        msg.message.conversation ||
+        msg.message.extendedTextMessage?.text
+
+      if (texto === '&ping') {
+        await sock.sendMessage(msg.key.remoteJid, {
+          text: 'pong 🏓'
+        })
+      }
+    })
+
+  } catch (err) {
+    console.log('💥 erro fatal:', err)
 
     setTimeout(() => {
       startBot()
-    }, delay)
+    }, 10000)
   }
-})
-
-  // 💬 mensagens (FORA do connection.update)
-  sock.ev.on('messages.upsert', async (m) => {
-    const msg = m.messages[0]
-    if (!msg.message) return
-
-    const texto =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text
-
-    if (texto === '&ping') {
-      await sock.sendMessage(msg.key.remoteJid, { text: 'pong 🏓' })
-    }
-  })
 }
 
 startBot()
