@@ -36,18 +36,38 @@ async function startBot() {
       isRestarting = false
     }
 
-    if (connection === 'close') {
+    let retryCount = 0
+const MAX_RETRIES = 10
 
-      if (isRestarting) return
-      isRestarting = true
+sock.ev.on('connection.update', (update) => {
+  const { connection } = update
 
-      console.log('⚠️ conexão caiu')
+  if (connection === 'open') {
+    console.log('✅ CONECTADO')
+    retryCount = 0
+  }
 
-      setTimeout(() => {
-        startBot()
-      }, 8000)
+  if (connection === 'close') {
+
+    retryCount++
+
+    console.log(`⚠️ conexão caiu (tentativa ${retryCount})`)
+
+    // 🛑 para antes de virar loop infinito
+    if (retryCount > MAX_RETRIES) {
+      console.log('❌ muitas tentativas. parada segura ativada.')
+      return
     }
-  })
+
+    const delay = Math.min(60000, 5000 * retryCount)
+
+    console.log(`🔄 tentando novamente em ${delay / 1000}s`)
+
+    setTimeout(() => {
+      startBot()
+    }, delay)
+  }
+})
 
   // 💬 mensagens (FORA do connection.update)
   sock.ev.on('messages.upsert', async (m) => {
