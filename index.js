@@ -1,11 +1,22 @@
+const express = require('express')
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys')
+
+const app = express()
+const PORT = process.env.PORT || 10000
+
+app.get('/', (req, res) => {
+  res.send('Juhoon online 🤖')
+})
+
+app.listen(PORT, () => {
+  console.log(`Servidor rodando na porta ${PORT}`)
+})
 
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('sessao')
 
   const sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false
+    auth: state
   })
 
   sock.ev.on('creds.update', saveCreds)
@@ -19,20 +30,19 @@ async function start() {
       console.log('✅ CONECTADO!')
     }
 
-    // pairing code (só se não estiver registrado)
-    if (connection === 'open' && !state.creds.registered) {
-      const numero = '554797918312'
-
+    if (!state.creds.registered) {
       try {
+        const numero = '554797918312' // coloque o número completo com DDI e DDD
+
         const code = await sock.requestPairingCode(numero)
-        console.log('\n🔑 CÓDIGO:\n', code)
-      } catch (e) {
-        console.log('Erro pairing:', e.message)
+
+        console.log('\n🔑 CÓDIGO DE PAREAMENTO:\n')
+        console.log(code)
+      } catch (err) {
+        console.log('Erro ao gerar código:', err.message)
       }
     }
   })
-
-  sock.ev.on('creds.update', saveCreds)
 }
 
 start()
