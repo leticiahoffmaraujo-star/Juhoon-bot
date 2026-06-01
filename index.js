@@ -14,22 +14,38 @@ const fs = require('fs')
 const app = express()
 const PORT = process.env.PORT || 10000
 
-// 👑 DONO DO BOT
-const DONO = '554797918312@s.whatsapp.net'
+// 👑 DONO
+const DONOS = ['554797918312@s.whatsapp.net']
 
-// QR
-let qrCodeData = null
+function isDono(sender) {
+  return DONOS.includes(sender)
+}
 
 // CONFIG
-let config = require('./config.json')
+let config = {}
+try {
+  config = require('./config.json')
+} catch {
+  config = {
+    soAdm: false,
+    bv: '👋 Bem-vindo @user!',
+    msgFechar: '🔒 grupo fechado',
+    msgAbrir: '🔓 grupo aberto',
+    prefix: '!'
+  }
+  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+}
 
 function salvarConfig() {
   fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
 }
 
+// QR
+let qrCodeData = null
+
 // WEB
 app.get('/', (req, res) =>
-  res.send('Juhoon Bot Online 🤖 <br><a href="/qr">Ver QR Code</a>')
+  res.send('🤖 Bot Online <br><a href="/qr">QR Code</a>')
 )
 
 app.get('/qr', async (req, res) => {
@@ -39,9 +55,9 @@ app.get('/qr', async (req, res) => {
   res.send(buffer)
 })
 
-app.listen(PORT, () => console.log(`🚀 Servidor rodando na porta ${PORT}`))
+app.listen(PORT, () => console.log(`🚀 Rodando na porta ${PORT}`))
 
-// BOT
+// BOT START
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('./sessao')
   const { version } = await fetchLatestBaileysVersion()
@@ -56,23 +72,42 @@ async function start() {
 
   sock.ev.on('creds.update', saveCreds)
 
+  // CONEXÃO
   sock.ev.on('connection.update', (update) => {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) qrCodeData = qr
 
     if (connection === 'open') {
-      console.log('✅ BOT CONECTADO!')
+      console.log('✅ BOT ONLINE')
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode
+
+      console.log('⚠️ caiu:', code)
+
       if (code !== DisconnectReason.loggedOut) {
-        setTimeout(start, 5000)
+        setTimeout(() => start(), 5000)
       }
     }
   })
 
+  // ENTRADA GRUPO (BOAS VINDAS)
+  sock.ev.on('group-participants.update', async (update) => {
+    const { id, participants, action } = update
+
+    if (action === 'add') {
+      for (let user of participants) {
+        await sock.sendMessage(id, {
+          text: config.bv.replace('@user', `@${user.split('@')[0]}`),
+          mentions: [user]
+        })
+      }
+    }
+  })
+
+  // MENSAGENS
   sock.ev.on('messages.upsert', async ({ messages }) => {
     try {
       const m = messages[0]
@@ -82,7 +117,7 @@ async function start() {
       const isGroup = from.endsWith('@g.us')
       const sender = m.key.participant || from
 
-      let text =
+      const text =
         m.message.conversation ||
         m.message.extendedTextMessage?.text ||
         m.message.imageMessage?.caption ||
@@ -91,65 +126,88 @@ async function start() {
 
       if (!text) return
 
-      const comando = text.toLowerCase().trim().split(' ')[0]
+      const prefix = config.prefix
+      if (!text.startsWith(prefix)) return
 
-      const isDono = sender === DONO
+      const comando = text.slice(prefix.length).split(' ')[0].toLowerCase()
 
-      // 🔐 bloqueio modo só admin
-      if (config.soAdm && isGroup) {
-        const groupMetadata = await sock.groupMetadata(from)
+      const isDonoUser = isDono(sender)
 
-        const isAdmin = groupMetadata.participants.find(
-          p => p.id === sender
-        )?.admin
-
-        if (!isAdmin && !isDono) return
+      // 🔐 SO ADM BLOQUEIO
+      if (config.soAdm && isGroup && !isDonoUser) {
+        const meta = await sock.groupMetadata(from)
+        const isAdmin = meta.participants.find(p => p.id === sender)?.admin
+        if (!isAdmin) return
       }
 
       // 👑 MENU DONO
-      if (comando === '!menudono') {
-        if (!isDono)
-          return sock.sendMessage(from, {
-            text: '❌ Apenas o dono pode usar isso.'
-          })
+      if (comando === 'menudono') {
+        if (!isDonoUser)
+          return sock.sendMessage(from, { text: '❌ só dono' })
 
         return sock.sendMessage(from, {
-          text:
-`👑 MENU DO DONO
+          text: `👑 MENU DONO
 
-• !soadm → liga/desliga modo admin
-• !menudono → este menu
-
-💼 controle total do bot`
+• setbv
+• setmsgfechar
+• setmsgabrir
+• soadm`
         })
       }
 
       // 🔐 SO ADM
-      if (comando === '!soadm') {
-        if (!isDono)
-          return sock.sendMessage(from, {
-            text: '❌ Apenas o dono pode usar esse comando.'
-          })
+      if (comando === 'soadm') {
+        if (!isDonoUser)
+          return sock.sendMessage(from, { text: '❌ só dono' })
 
         config.soAdm = !config.soAdm
         salvarConfig()
 
         return sock.sendMessage(from, {
-          text: `🔐 Modo só admin: ${config.soAdm ? 'ON' : 'OFF'}`
+          text: `🔐 modo admin: ${config.soAdm ? 'ON' : 'OFF'}`
+        })
+      }
+
+      // 💬 SET BOAS VINDAS
+      if (comando === 'setbv') {
+        if (!isDonoUser) return
+
+        config.bv = text.split(' ').slice(1).join(' ')
+        salvarConfig()
+
+        return sock.sendMessage(from, {
+          text: '✅ boas-vindas atualizada'
+        })
+      }
+
+      // 🔒 MSG FECHAR
+      if (comando === 'setmsgfechar') {
+        if (!isDonoUser) return
+
+        config.msgFechar = text.split(' ').slice(1).join(' ')
+        salvarConfig()
+
+        return sock.sendMessage(from, {
+          text: '🔒 msg de fechar salva'
+        })
+      }
+
+      // 🔓 MSG ABRIR
+      if (comando === 'setmsgabrir') {
+        if (!isDonoUser) return
+
+        config.msgAbrir = text.split(' ').slice(1).join(' ')
+        salvarConfig()
+
+        return sock.sendMessage(from, {
+          text: '🔓 msg de abrir salva'
         })
       }
 
       // 📌 STICKER
-      if (comando === '!sticker' || comando === '!s') {
-        const msg =
-          m.message.imageMessage ||
-          m.message.videoMessage ||
-          m.message.stickerMessage
-
-        if (!msg)
-          return sock.sendMessage(from, {
-            text: '❌ envie imagem ou vídeo'
-          })
+      if (comando === 'sticker' || comando === 's') {
+        const msg = m.message.imageMessage || m.message.videoMessage
+        if (!msg) return sock.sendMessage(from, { text: '❌ mídia necessária' })
 
         const buffer = await sock.downloadMediaMessage(m)
 
@@ -162,107 +220,98 @@ async function start() {
       }
 
       // 👑 PROMOVER
-      if (comando === '!promover') {
+      if (comando === 'promover') {
         const target =
           m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
           text.split(' ')[1]
 
-        if (!target)
-          return sock.sendMessage(from, { text: '❌ marque alguém' })
+        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
 
         await sock.groupParticipantsUpdate(from, [target], 'promote')
 
-        return sock.sendMessage(from, {
-          text: '✅ promovido'
-        })
+        return sock.sendMessage(from, { text: '✅ promovido' })
       }
 
       // 👇 REBAIXAR
-      if (comando === '!rebaixar') {
+      if (comando === 'rebaixar') {
         const target =
           m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
           text.split(' ')[1]
 
-        if (!target)
-          return sock.sendMessage(from, { text: '❌ marque alguém' })
+        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
 
         await sock.groupParticipantsUpdate(from, [target], 'demote')
 
-        return sock.sendMessage(from, {
-          text: '✅ rebaixado'
-        })
+        return sock.sendMessage(from, { text: '✅ rebaixado' })
       }
 
       // ❌ REMOVER
-      if (comando === '!remover') {
+      if (comando === 'remover') {
         const target =
           m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
           text.split(' ')[1]
 
-        if (!target)
-          return sock.sendMessage(from, { text: '❌ marque alguém' })
+        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
 
         await sock.groupParticipantsUpdate(from, [target], 'remove')
 
-        return sock.sendMessage(from, {
-          text: '❌ removido'
-        })
+        return sock.sendMessage(from, { text: '❌ removido' })
       }
 
       // 📢 MARCAR TODOS
-      if (comando === '!marcar' || comando === '!totag') {
+      if (comando === 'marcar' || comando === 'totag') {
         const group = await sock.groupMetadata(from)
-
         const mentions = group.participants.map(p => p.id)
 
         return sock.sendMessage(from, {
-          text: text.replace(comando, '').trim() || '📢 ֮ϐׁᨵׁׅׅꭈׁׅɑׁׅ ɑׁׅ℘ɑׁׅꭈׁׅꫀׁׅܻ݊ᝯׁ֒ꫀׁׅܻ݊ꭈׁׅ?',
+          text: text.replace(prefix + comando, '').trim() || '📢 geral',
           mentions
         })
       }
 
       // 🔒 FECHAR
-      if (comando === '!fechargp') {
+      if (comando === 'fechargp') {
         await sock.groupSettingUpdate(from, 'announcement')
 
         return sock.sendMessage(from, {
-          text: '🔒 grupo fechado'
+          text: config.msgFechar
         })
       }
 
       // 🔓 ABRIR
-      if (comando === '!abrirgp') {
+      if (comando === 'abrirgp') {
         await sock.groupSettingUpdate(from, 'not_announcement')
 
         return sock.sendMessage(from, {
-          text: '🔓 grupo aberto'
+          text: config.msgAbrir
         })
       }
 
       // 📌 MENU
-      if (comando === '!menu') {
+      if (comando === 'menu') {
         return sock.sendMessage(from, {
-          text:
-`🤖 𝐌𝐄𝐍𝐔
+          text: `🤖 MENU
 
-• !sticker
-• !marcar
-• !promover
-• !rebaixar
-• !remover
-• !fechargp
-• !abrirgp
-• !soadm`
+• sticker
+• marcar
+• promover
+• rebaixar
+• remover
+• fechargp
+• abrirgp
+• soadm`
         })
       }
 
       // 🏓 PING
-      if (comando === '!ping') {
+      if (comando === 'ping') {
         return sock.sendMessage(from, {
-          text: '🏓 ℘ᨵׁׅׅ݊ꪀᧁׁ! hׁׅ֮ᨵׁׅׅᨵׁׅׅ݊ꪀ ᨵׁׅׅ݊ꪀ!'        })
+          text: '🏓 pong'
+        })
       }
+
     } catch (e) {
-      console.log('erro:', e)
+      console.log(e)
     }
   })
 }
