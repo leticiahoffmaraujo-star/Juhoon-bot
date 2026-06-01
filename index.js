@@ -1,5 +1,18 @@
+const express = require('express')
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys')
 const P = require('pino')
+
+const app = express()
+const port = process.env.PORT || 10000
+
+// 🌐 servidor fica fora do bot
+app.get('/', (req, res) => {
+  res.send('Bot online 🤖')
+})
+
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`)
+})
 
 async function startBot() {
 
@@ -14,46 +27,27 @@ async function startBot() {
   sock.ev.on('creds.update', saveCreds)
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update
-
-    if (qr) {
-      console.log('📲 QR atualizado — escaneia de novo se precisar')
-    }
+    const { connection, lastDisconnect } = update
 
     if (connection === 'open') {
-      console.log('✅ CONECTADO COM SUCESSO')
+      console.log('✅ CONECTADO')
     }
 
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode
-
       const loggedOut = statusCode === DisconnectReason.loggedOut
 
-      console.log('⚠️ caiu conexão')
+      console.log('⚠️ conexão caiu')
 
-      if (loggedOut) {
-        console.log('❌ Logout detectado — precisa novo QR')
-        return
-      }
+      if (loggedOut) return
 
-      // 🔥 delay antes de reconectar (evita loop infinito no Render)
+      // 🔥 só reconecta o WHATSAPP, não o servidor
       setTimeout(() => {
         startBot()
       }, 5000)
     }
   })
-const express = require('express')
-const app = express()
-const port = process.env.PORT || 4000
 
-app.get('/', (req, res) => {
-  res.send('Hello World!')
-})
-
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
-  
   sock.ev.on('messages.upsert', async (m) => {
     const msg = m.messages[0]
     if (!msg.message) return
