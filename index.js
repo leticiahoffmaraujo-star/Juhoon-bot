@@ -69,6 +69,7 @@ async function start() {
     setTimeout(start, 5000)
   }
     }
+  })
   // 💬 MENSAGENS
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0]
