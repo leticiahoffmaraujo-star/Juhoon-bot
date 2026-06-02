@@ -1,6 +1,10 @@
 {
   "soAdm": false,
   "mensagemBoasVindas": "Boas vindas, @user",
-  "mensagemFecharGrupo": "🔒 Grupo fechado. Aguarde a liberação amanhã",
-  "mensagemAbrirGrupo": "🔓 Grupo aberto. Siga as regras e aproveite."
+  "mensagemFecharGrupo": "🔒𝙶𝚁𝚄𝙿𝙾 𝙵𝙴𝙲𝙷𝙰𝙳𝙾🔒 𝙰𝙶𝚄𝙰𝚁𝙳𝙴 𝙰 𝙻𝙸𝙱𝙴𝚁𝙰𝙲𝙰𝙾 𝙰𝙼𝙰𝙽𝙷𝙰 𝙿𝙴𝙻𝙰 𝙼𝙰𝙽𝙷𝙰",
+  "mensagemAbrirGrupo": "🔓 𝙶𝚁𝚄𝙿𝙾 𝙰𝙱𝙴𝚁𝚃𝙾 🔓 𝙿𝙾𝙳𝙴𝙼 𝙲𝙾𝙽𝚅𝙴𝚁𝚂𝙰𝚁 𝙴 𝙸𝙽𝚃𝙴𝚁𝙰𝙶𝙸𝚁 𝙳𝙴𝙽𝚃𝚁𝙾 𝙳𝙰𝚂 𝚁𝙴𝙶𝚁𝙰𝚂!"
+}
+{
+  "boasVindas": true,
+  "mensagemBoasVindas": "Boas vindas ao nosso grupo! Leia as regras, se apresente e se divirta, @user!"
 }
