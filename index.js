@@ -1,4 +1,5 @@
 const express = require('express')
+const mongoose = require('mongoose')
 const {
   default: makeWASocket,
   useMultiFileAuthState,
@@ -9,55 +10,54 @@ const {
 const QRCode = require('qrcode')
 const pino = require('pino')
 const sharp = require('sharp')
-const fs = require('fs')
 
 const app = express()
 const PORT = process.env.PORT || 10000
 
-// 👑 DONO
-const DONOS = ['554797918312@s.whatsapp.net']
+// 👑 DONO DO BOT
+const DONO = '554797918312@s.whatsapp.net'
 
-function isDono(sender) {
-  return DONOS.includes(sender)
+// ================= MONGO =================
+mongoose.connect(process.env.MONGO_URL || 'SUA_MONGO_URL')
+  .then(() => console.log('🟢 MongoDB conectado'))
+  .catch(err => console.log('🔴 erro MongoDB', err))
+
+const ConfigSchema = new mongoose.Schema({
+  id: String,
+  soAdm: { type: Boolean, default: false }
+})
+
+const Config = mongoose.model('Config', ConfigSchema)
+
+async function getConfig() {
+  let cfg = await Config.findOne({ id: 'global' })
+  if (!cfg) cfg = await Config.create({ id: 'global' })
+  return cfg
 }
 
-// CONFIG
-let config = {}
-try {
-  config = require('./config.json')
-} catch {
-  config = {
-    soAdm: false,
-    bv: '👋 Bem-vindo @user!',
-    msgFechar: '🔒 grupo fechado',
-    msgAbrir: '🔓 grupo aberto',
-    prefix: '!'
-  }
-  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+async function saveConfig(cfg) {
+  await Config.updateOne({ id: 'global' }, cfg, { upsert: true })
 }
 
-function salvarConfig() {
-  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
-}
-
-// QR
+// ================= EXPRESS =================
 let qrCodeData = null
 
-// WEB
 app.get('/', (req, res) =>
-  res.send('🤖 Bot Online <br><a href="/qr">QR Code</a>')
+  res.send('🤖 Bot Online <br><a href="/qr">Ver QR</a>')
 )
 
 app.get('/qr', async (req, res) => {
-  if (!qrCodeData) return res.send('Nenhum QR disponível.')
+  if (!qrCodeData) return res.send('Nenhum QR disponível')
   const buffer = await QRCode.toBuffer(qrCodeData, { width: 400 })
   res.setHeader('Content-Type', 'image/png')
   res.send(buffer)
 })
 
-app.listen(PORT, () => console.log(`🚀 Rodando na porta ${PORT}`))
+app.listen(PORT, () =>
+  console.log(`🚀 Servidor rodando na porta ${PORT}`)
+)
 
-// BOT START
+// ================= BOT =================
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('./sessao')
   const { version } = await fetchLatestBaileysVersion()
@@ -66,148 +66,93 @@ async function start() {
     version,
     auth: state,
     printQRInTerminal: false,
-    logger: pino({ level: 'silent' }),
-    browser: ['Ubuntu', 'Chrome', 'Bot']
+    logger: pino({ level: 'silent' })
   })
 
+  // salva login
   sock.ev.on('creds.update', saveCreds)
 
-  // CONEXÃO
-  sock.ev.on('connection.update', (update) => {
+  // conexão
+  sock.ev.on('connection.update', async (update) => {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) qrCodeData = qr
 
     if (connection === 'open') {
-      console.log('✅ BOT ONLINE')
+      console.log('✅ BOT CONECTADO')
     }
 
     if (connection === 'close') {
       const code = lastDisconnect?.error?.output?.statusCode
 
-      console.log('⚠️ caiu:', code)
-
       if (code !== DisconnectReason.loggedOut) {
-        setTimeout(() => start(), 5000)
+        setTimeout(start, 5000)
       }
     }
   })
 
-  // ENTRADA GRUPO (BOAS VINDAS)
-  sock.ev.on('group-participants.update', async (update) => {
-    const { id, participants, action } = update
-
-    if (action === 'add') {
-      for (let user of participants) {
-        await sock.sendMessage(id, {
-          text: config.bv.replace('@user', `@${user.split('@')[0]}`),
-          mentions: [user]
-        })
-      }
-    }
-  })
-
-  // MENSAGENS
+  // ================= MENSAGENS =================
   sock.ev.on('messages.upsert', async ({ messages }) => {
     try {
       const m = messages[0]
       if (!m.message || m.key.fromMe) return
 
       const from = m.key.remoteJid
-      const isGroup = from.endsWith('@g.us')
       const sender = m.key.participant || from
+      const isGroup = from.endsWith('@g.us')
 
       const text =
         m.message.conversation ||
         m.message.extendedTextMessage?.text ||
-        m.message.imageMessage?.caption ||
-        m.message.videoMessage?.caption ||
         ''
 
       if (!text) return
 
-      const prefix = config.prefix
-      if (!text.startsWith(prefix)) return
+      const comando = text.toLowerCase().split(' ')[0]
 
-      const comando = text.slice(prefix.length).split(' ')[0].toLowerCase()
+      const isDono = sender === DONO
 
-      const isDonoUser = isDono(sender)
+      const cfg = await getConfig()
 
-      // 🔐 SO ADM BLOQUEIO
-      if (config.soAdm && isGroup && !isDonoUser) {
+      // 🔐 bloqueio admin global
+      if (cfg.soAdm && isGroup) {
         const meta = await sock.groupMetadata(from)
         const isAdmin = meta.participants.find(p => p.id === sender)?.admin
-        if (!isAdmin) return
+        if (!isAdmin && !isDono) return
       }
 
-      // 👑 MENU DONO
-      if (comando === 'menudono') {
-        if (!isDonoUser)
-          return sock.sendMessage(from, { text: '❌ só dono' })
+      // ================= DONO MENU =================
+      if (comando === '!menudono') {
+        if (!isDono) return
 
         return sock.sendMessage(from, {
-          text: `👑 MENU DONO
+          text:
+`👑 MENU DO DONO
 
-• setbv
-• setmsgfechar
-• setmsgabrir
-• soadm`
+• !soadm → modo admin global
+• controle total do bot`
         })
       }
 
-      // 🔐 SO ADM
-      if (comando === 'soadm') {
-        if (!isDonoUser)
-          return sock.sendMessage(from, { text: '❌ só dono' })
+      // ================= SO ADM =================
+      if (comando === '!soadm') {
+        if (!isDono) return
 
-        config.soAdm = !config.soAdm
-        salvarConfig()
+        cfg.soAdm = !cfg.soAdm
+        await saveConfig(cfg)
 
         return sock.sendMessage(from, {
-          text: `🔐 modo admin: ${config.soAdm ? 'ON' : 'OFF'}`
+          text: `🔐 modo admin: ${cfg.soAdm ? 'ON' : 'OFF'}`
         })
       }
 
-      // 💬 SET BOAS VINDAS
-      if (comando === 'setbv') {
-        if (!isDonoUser) return
+      // ================= STICKER =================
+      if (comando === '!sticker' || comando === '!s') {
+        const msg =
+          m.message.imageMessage ||
+          m.message.videoMessage
 
-        config.bv = text.split(' ').slice(1).join(' ')
-        salvarConfig()
-
-        return sock.sendMessage(from, {
-          text: '✅ boas-vindas atualizada'
-        })
-      }
-
-      // 🔒 MSG FECHAR
-      if (comando === 'setmsgfechar') {
-        if (!isDonoUser) return
-
-        config.msgFechar = text.split(' ').slice(1).join(' ')
-        salvarConfig()
-
-        return sock.sendMessage(from, {
-          text: '🔒 msg de fechar salva'
-        })
-      }
-
-      // 🔓 MSG ABRIR
-      if (comando === 'setmsgabrir') {
-        if (!isDonoUser) return
-
-        config.msgAbrir = text.split(' ').slice(1).join(' ')
-        salvarConfig()
-
-        return sock.sendMessage(from, {
-          text: '🔓 msg de abrir salva'
-        })
-      }
-
-      // 📌 STICKER
-      if (comando === 'sticker' || comando === 's') {
-        const msg = m.message.imageMessage || m.message.videoMessage
-        if (!msg) return sock.sendMessage(from, { text: '❌ mídia necessária' })
+        if (!msg) return sock.sendMessage(from, { text: 'envie mídia' })
 
         const buffer = await sock.downloadMediaMessage(m)
 
@@ -219,99 +164,77 @@ async function start() {
         return sock.sendMessage(from, { sticker })
       }
 
-      // 👑 PROMOVER
-      if (comando === 'promover') {
-        const target =
-          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
-          text.split(' ')[1]
+      // ================= GRUPO =================
+      if (comando === '!marcar') {
+        const meta = await sock.groupMetadata(from)
+        const mentions = meta.participants.map(p => p.id)
 
-        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
+        return sock.sendMessage(from, {
+          text: text.replace(comando, '') || '📢 geral',
+          mentions
+        })
+      }
+
+      if (comando === '!fechargp') {
+        await sock.groupSettingUpdate(from, 'announcement')
+        return sock.sendMessage(from, { text: '🔒 fechado' })
+      }
+
+      if (comando === '!abrirgp') {
+        await sock.groupSettingUpdate(from, 'not_announcement')
+        return sock.sendMessage(from, { text: '🔓 aberto' })
+      }
+
+      if (comando === '!promover') {
+        const target =
+          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+
+        if (!target) return
 
         await sock.groupParticipantsUpdate(from, [target], 'promote')
 
         return sock.sendMessage(from, { text: '✅ promovido' })
       }
 
-      // 👇 REBAIXAR
-      if (comando === 'rebaixar') {
+      if (comando === '!rebaixar') {
         const target =
-          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
-          text.split(' ')[1]
+          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
 
-        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
+        if (!target) return
 
         await sock.groupParticipantsUpdate(from, [target], 'demote')
 
-        return sock.sendMessage(from, { text: '✅ rebaixado' })
+        return sock.sendMessage(from, { text: '⬇️ rebaixado' })
       }
 
-      // ❌ REMOVER
-      if (comando === 'remover') {
+      if (comando === '!remover') {
         const target =
-          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0] ||
-          text.split(' ')[1]
+          m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
 
-        if (!target) return sock.sendMessage(from, { text: '❌ marca alguém' })
+        if (!target) return
 
         await sock.groupParticipantsUpdate(from, [target], 'remove')
 
         return sock.sendMessage(from, { text: '❌ removido' })
       }
 
-      // 📢 MARCAR TODOS
-      if (comando === 'marcar' || comando === 'totag') {
-        const group = await sock.groupMetadata(from)
-        const mentions = group.participants.map(p => p.id)
-
+      if (comando === '!menu') {
         return sock.sendMessage(from, {
-          text: text.replace(prefix + comando, '').trim() || '📢 geral',
-          mentions
-        })
-      }
+          text:
+`🤖 MENU
 
-      // 🔒 FECHAR
-      if (comando === 'fechargp') {
-        await sock.groupSettingUpdate(from, 'announcement')
-
-        return sock.sendMessage(from, {
-          text: config.msgFechar
-        })
-      }
-
-      // 🔓 ABRIR
-      if (comando === 'abrirgp') {
-        await sock.groupSettingUpdate(from, 'not_announcement')
-
-        return sock.sendMessage(from, {
-          text: config.msgAbrir
-        })
-      }
-
-      // 📌 MENU
-      if (comando === 'menu') {
-        return sock.sendMessage(from, {
-          text: `🤖 MENU
-
-• sticker
-• marcar
-• promover
-• rebaixar
-• remover
-• fechargp
-• abrirgp
-• soadm`
-        })
-      }
-
-      // 🏓 PING
-      if (comando === 'ping') {
-        return sock.sendMessage(from, {
-          text: '🏓 pong'
+• !sticker
+• !marcar
+• !promover
+• !rebaixar
+• !remover
+• !fechargp
+• !abrirgp`
         })
       }
 
     } catch (e) {
-      console.log(e)
+      console.log('erro:', e)
     }
   })
 }
