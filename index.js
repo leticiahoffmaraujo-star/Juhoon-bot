@@ -9,9 +9,10 @@ const {
 const QRCode = require('qrcode')
 const pino = require('pino')
 const sharp = require('sharp')
-
 const app = express()
 const PORT = process.env.PORT || 10000
+const fs = require('fs')
+const config = require('./config.json')
 
 // 👑 DONO
 const DONO = '554797918312@s.whatsapp.net'
@@ -83,12 +84,128 @@ async function start() {
     const cmd = text.toLowerCase().split(' ')[0]
 
     const isDono = sender === DONO
-
+    const isGroup = from.endsWith('@g.us')
+    
     // 👋 ping
     if (cmd === '!ping') {
       return sock.sendMessage(from, { text: '🏓 pong' })
     }
+// 👑 PROMOVER
+if (cmd === '!promover') {
+  if (!isGroup) return
 
+  const alvo =
+    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+
+  if (!alvo) {
+    return sock.sendMessage(from, {
+      text: '❌ Marque alguém.'
+    })
+  }
+
+  await sock.groupParticipantsUpdate(
+    from,
+    [alvo],
+    'promote'
+  )
+
+  return sock.sendMessage(from, {
+    text: '✅ Usuário promovido.'
+  })
+}
+    // 👇 REBAIXAR
+if (cmd === '!rebaixar') {
+  if (!isGroup) return
+
+  const alvo =
+    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+
+  if (!alvo) {
+    return sock.sendMessage(from, {
+      text: '❌ Marque alguém.'
+    })
+  }
+
+  await sock.groupParticipantsUpdate(
+    from,
+    [alvo],
+    'demote'
+  )
+
+  return sock.sendMessage(from, {
+    text: '✅ Usuário rebaixado.'
+  })
+}
+    // ❌ REMOVER
+if (cmd === '!remover') {
+  if (!isGroup) return
+
+  const alvo =
+    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
+
+  if (!alvo) {
+    return sock.sendMessage(from, {
+      text: '❌ Marque alguém.'
+    })
+  }
+
+  await sock.groupParticipantsUpdate(
+    from,
+    [alvo],
+    'remove'
+  )
+
+  return sock.sendMessage(from, {
+    text: '✅ Usuário removido.'
+  })
+}
+    // 🔒 FECHAR GRUPO
+if (cmd === '!fechargp') {
+  if (!isGroup) return
+
+  await sock.groupSettingUpdate(
+    from,
+    'announcement'
+  )
+
+  return sock.sendMessage(from, {
+    text: config.mensagemFecharGrupo
+  })
+}
+    // 🔓 ABRIR GRUPO
+if (cmd === '!abrirgp') {
+  if (!isGroup) return
+
+  await sock.groupSettingUpdate(
+    from,
+    'not_announcement'
+  )
+
+  return sock.sendMessage(from, {
+    text: config.mensagemAbrirGrupo
+  })
+}
+    // 📢 MARCAR TODOS
+if (cmd === '!marcar' || cmd === '!totag') {
+
+  if (!isGroup) return
+
+  const grupo = await sock.groupMetadata(from)
+
+  const membros = grupo.participants.map(
+    p => p.id
+  )
+
+  const mensagem =
+    text.replace(cmd, '').trim() ||
+    '📢 Chamando todos!'
+
+  return sock.sendMessage(from, {
+    text: mensagem,
+    mentions: membros
+  })
+}
+    
     // 👑 menu dono
     if (cmd === '!menudono') {
       if (!isDono) return
@@ -118,8 +235,29 @@ async function start() {
         .toBuffer()
 
       return sock.sendMessage(from, { sticker })
-    }
+    
+if (cmd === '!menu') {
+  return sock.sendMessage(from, {
+    text: `🤖 MENU JUHOON
+
+📌 Gerais
+• !ping
+• !sticker
+• !menu
+
+👑 Administração
+• !promover
+• !rebaixar
+• !remover
+• !marcar
+• !totag
+• !fechargp
+• !abrirgp
+
+⚙️ Dono
+• !menudono`
   })
 }
-
+  })
+      }
 start()
