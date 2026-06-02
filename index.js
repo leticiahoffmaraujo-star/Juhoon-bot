@@ -233,12 +233,13 @@ if (cmd === '!marcar' || cmd === '!totag') {
         .resize(512, 512, { fit: 'contain' })
         .webp()
         .toBuffer()
+return sock.sendMessage(from, { sticker })
+    }
 
-      return sock.sendMessage(from, { sticker })
-    
-if (cmd === '!menu') {
-  return sock.sendMessage(from, {
-    text: `🤖 MENU JUHOON
+    // MENU
+    if (cmd === '!menu') {
+      return sock.sendMessage(from, {
+        text: `🤖 MENU JUHOON
 
 📌 Gerais
 • !ping
@@ -256,8 +257,10 @@ if (cmd === '!menu') {
 
 ⚙️ Dono
 • !menudono`
+      })
+    }
+
   })
 }
-  })
-      }
+
 start()
