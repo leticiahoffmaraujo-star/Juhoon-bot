@@ -9,18 +9,16 @@ const {
 const QRCode = require('qrcode')
 const pino = require('pino')
 const sharp = require('sharp')
-const app = express()
-const PORT = process.env.PORT || 10000
 const fs = require('fs')
 const config = require('./config.json')
 
-// 👑 DONO
+const app = express()
+const PORT = process.env.PORT || 10000
+
 const DONO = '5527999945586@s.whatsapp.net'
 
-// 📱 QR
 let qrCodeData = null
 
-// 🌐 WEB
 app.get('/', (req, res) => {
   res.send('🤖 Bot online <br><a href="/qr">QR Code</a>')
 })
@@ -36,7 +34,6 @@ app.listen(PORT, () => {
   console.log(`🚀 servidor rodando na porta ${PORT}`)
 })
 
-// 🤖 BOT
 async function start() {
   const { state, saveCreds } = await useMultiFileAuthState('./sessao')
   const { version } = await fetchLatestBaileysVersion()
@@ -51,26 +48,39 @@ async function start() {
   sock.ev.on('creds.update', saveCreds)
 
   sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect, qr } = update
+  const { connection, lastDisconnect } = update
 
-    if (qr) qrCodeData = qr
+  if (connection === 'close') {
+    const code = lastDisconnect?.error?.output?.statusCode
 
-    if (connection === 'open') {
-      console.log('✅ BOT CONECTADO')
+    console.log('⚠️ caiu:', code)
+
+    // 👇 reconecta SEM resetar sessão
+    if (code !== DisconnectReason.loggedOut) {
+      setTimeout(() => {
+        console.log('🔄 reconectando...')
+        start()
+      }, 3000)
     }
-
-    if (connection === 'close') {
-  console.log('❌ Desconectado')
-  console.log(lastDisconnect)
-
-  const code = lastDisconnect?.error?.output?.statusCode
-
-  if (code !== DisconnectReason.loggedOut) {
-    setTimeout(start, 5000)
   }
+})
+
+  sock.ev.on('group-participants.update', async (data) => {
+    if (!config.boasVindas) return
+
+    if (data.action === 'add') {
+      for (const user of data.participants) {
+        const msg = config.mensagemBoasVindas
+          .replace('@user', `@${user.split('@')[0]}`)
+
+        await sock.sendMessage(data.id, {
+          text: msg,
+          mentions: [user]
+        })
+      }
     }
   })
-  // 💬 MENSAGENS
+
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0]
     if (!m.message || m.key.fromMe) return
@@ -87,206 +97,51 @@ async function start() {
 
     const isDono = sender === DONO
     const isGroup = from.endsWith('@g.us')
-    
-    // 👋 ping
+
     if (cmd === '!ping') {
       return sock.sendMessage(from, { text: '🏓 pong' })
     }
-    
-    //boas vindas
+
     if (cmd === '!bvon') {
-  if (!isDono) return
-
-  config.boasVindas = true
-  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
-
-  return sock.sendMessage(from, {
-    text: '✅ Boas-vindas ativadas.'
-  })
-}
-
-if (cmd === '!bvoff') {
-  if (!isDono) return
-
-  config.boasVindas = false
-  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
-
-  return sock.sendMessage(from, {
-    text: '✅ Boas-vindas desativadas.'
-  })
-    }
-    
-// 👑 PROMOVER
-if (cmd === '!promover') {
-  if (!isGroup) return
-
-  const alvo =
-    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-
-  if (!alvo) {
-    return sock.sendMessage(from, {
-      text: '❌ Marque alguém.'
-    })
-  }
-
-  await sock.groupParticipantsUpdate(
-    from,
-    [alvo],
-    'promote'
-  )
-
-  return sock.sendMessage(from, {
-    text: '✅ Usuário promovido.'
-  })
-}
-    // 👇 REBAIXAR
-if (cmd === '!rebaixar') {
-  if (!isGroup) return
-
-  const alvo =
-    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-
-  if (!alvo) {
-    return sock.sendMessage(from, {
-      text: '❌ Marque alguém.'
-    })
-  }
-
-  await sock.groupParticipantsUpdate(
-    from,
-    [alvo],
-    'demote'
-  )
-
-  return sock.sendMessage(from, {
-    text: '✅ Usuário rebaixado.'
-  })
-}
-    // ❌ REMOVER
-if (cmd === '!remover') {
-  if (!isGroup) return
-
-  const alvo =
-    m.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0]
-
-  if (!alvo) {
-    return sock.sendMessage(from, {
-      text: '❌ Marque alguém.'
-    })
-  }
-
-  await sock.groupParticipantsUpdate(
-    from,
-    [alvo],
-    'remove'
-  )
-
-  return sock.sendMessage(from, {
-    text: '✅ Usuário removido.'
-  })
-}
-    // 🔒 FECHAR GRUPO
-if (cmd === '!fechargp') {
-  if (!isGroup) return
-
-  await sock.groupSettingUpdate(
-    from,
-    'announcement'
-  )
-
-  return sock.sendMessage(from, {
-    text: config.mensagemFecharGrupo
-  })
-}
-    // 🔓 ABRIR GRUPO
-if (cmd === '!abrirgp') {
-  if (!isGroup) return
-
-  await sock.groupSettingUpdate(
-    from,
-    'not_announcement'
-  )
-
-  return sock.sendMessage(from, {
-    text: config.mensagemAbrirGrupo
-  })
-}
-    // 📢 MARCAR TODOS
-if (cmd === '!marcar' || cmd === '!totag') {
-
-  if (!isGroup) return
-
-  const grupo = await sock.groupMetadata(from)
-
-  const membros = grupo.participants.map(
-    p => p.id
-  )
-
-  const mensagem =
-    text.replace(cmd, '').trim() ||
-    '📢 Chamando todos!'
-
-  return sock.sendMessage(from, {
-    text: mensagem,
-    mentions: membros
-  })
-}
-    
-    // 👑 menu dono
-    if (cmd === '!menudono') {
       if (!isDono) return
-
-      return sock.sendMessage(from, {
-        text: `👑 MENU DONO\n\n• !ping\n• !soadm (futuro)`
-      })
+      config.boasVindas = true
+      fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+      return sock.sendMessage(from, { text: 'Boas-vindas ativadas' })
     }
 
-    // 📌 sticker básico
-    if (cmd === '!sticker' || cmd === '!s') {
-      const media =
-        m.message.imageMessage ||
-        m.message.videoMessage
-
-      if (!media) {
-        return sock.sendMessage(from, {
-          text: '❌ envie imagem ou vídeo'
-        })
-      }
-
-      const buffer = await sock.downloadMediaMessage(m)
-
-      const sticker = await sharp(buffer)
-        .resize(512, 512, { fit: 'contain' })
-        .webp()
-        .toBuffer()
-return sock.sendMessage(from, { sticker })
+    if (cmd === '!bvoff') {
+      if (!isDono) return
+      config.boasVindas = false
+      fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+      return sock.sendMessage(from, { text: 'Boas-vindas desativadas' })
     }
 
-    // MENU
     if (cmd === '!menu') {
       return sock.sendMessage(from, {
-        text: `🤖 MENU JUHOON
+        text: `🤖 MENU
 
-📌 Gerais
 • !ping
-• !sticker
-• !menu
-
-👑 Administração
-• !promover
-• !rebaixar
-• !remover
-• !marcar
-• !totag
-• !fechargp
-• !abrirgp
-
-⚙️ Dono
-• !menudono`
+• !menu`
       })
     }
-
   })
 }
 
 start()
+
+// 💓 mantém o bot "acordado"
+setInterval(() => {
+  console.log('💓 bot vivo')
+}, 60000)
+const path = require('path')
+
+function protegerSessao() {
+  const pasta = path.join(__dirname, 'sessao')
+
+  if (!fs.existsSync(pasta)) {
+    fs.mkdirSync(pasta)
+    console.log('📁 Sessão recriada')
+  }
+}
+
+protegerSessao()
