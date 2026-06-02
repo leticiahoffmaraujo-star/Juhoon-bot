@@ -15,7 +15,7 @@ const fs = require('fs')
 const config = require('./config.json')
 
 // 👑 DONO
-const DONO = '554797918312@s.whatsapp.net'
+const DONO = '5527999945586@s.whatsapp.net'
 
 // 📱 QR
 let qrCodeData = null
@@ -60,14 +60,15 @@ async function start() {
     }
 
     if (connection === 'close') {
-      const code = lastDisconnect?.error?.output?.statusCode
+  console.log('❌ Desconectado')
+  console.log(lastDisconnect)
 
-      if (code !== DisconnectReason.loggedOut) {
-        setTimeout(start, 5000)
-      }
+  const code = lastDisconnect?.error?.output?.statusCode
+
+  if (code !== DisconnectReason.loggedOut) {
+    setTimeout(start, 5000)
+  }
     }
-  })
-
   // 💬 MENSAGENS
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0]
@@ -90,6 +91,30 @@ async function start() {
     if (cmd === '!ping') {
       return sock.sendMessage(from, { text: '🏓 pong' })
     }
+    
+    //boas vindas
+    if (cmd === '!bvon') {
+  if (!isDono) return
+
+  config.boasVindas = true
+  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+
+  return sock.sendMessage(from, {
+    text: '✅ Boas-vindas ativadas.'
+  })
+}
+
+if (cmd === '!bvoff') {
+  if (!isDono) return
+
+  config.boasVindas = false
+  fs.writeFileSync('./config.json', JSON.stringify(config, null, 2))
+
+  return sock.sendMessage(from, {
+    text: '✅ Boas-vindas desativadas.'
+  })
+    }
+    
 // 👑 PROMOVER
 if (cmd === '!promover') {
   if (!isGroup) return
