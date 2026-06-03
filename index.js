@@ -66,20 +66,20 @@ async function start() {
 })
 
   sock.ev.on('group-participants.update', async (data) => {
-    if (!config.boasVindas) return
+  sock.ev.on('connection.update', (update) => {
+  console.log(update)
 
-    if (data.action === 'add') {
-      for (const user of data.participants) {
-        const msg = config.mensagemBoasVindas
-          .replace('@user', `@${user.split('@')[0]}`)
+  const { connection, qr } = update
 
-        await sock.sendMessage(data.id, {
-          text: msg,
-          mentions: [user]
-        })
-      }
-    }
-  })
+  if (qr) {
+    console.log('📱 QR GERADO')
+    qrCodeData = qr
+  }
+
+  if (connection === 'open') {
+    console.log('✅ BOT CONECTADO')
+  }
+})
 
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const m = messages[0]
